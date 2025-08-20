@@ -14,9 +14,12 @@ Powered by LangGraph workflow orchestration and LLM-based project analysis for d
 ## Getting Started
 
 ### Install dependencies
-**Windows (Must Run as Administrator):** 
-- Right-click `START_WINDOWS_ONE_CLICK.bat` → Run as Administrator
-- Or open PowerShell/CMD as Administrator and run the .bat file
+**Windows (Must Run as Administrator):**
+```powershell
+# Option 1: Right-click START_WINDOWS_ONE_CLICK.bat → Run as Administrator
+# Option 2: Open PowerShell as Administrator and run:
+.\START_WINDOWS_ONE_CLICK.bat
+```
 
 **Ubuntu:**
 ```bash
