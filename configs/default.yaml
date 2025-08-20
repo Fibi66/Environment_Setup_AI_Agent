@@ -1,0 +1,64 @@
+app:
+  name: SetupAgent AI
+  version: 1.0.0
+
+llm:
+  primary:
+    provider: ${PROVIDER:-openai}
+    model: ${MODEL:-gpt-4-turbo-preview}
+    temperature: 0.3
+    max_tokens: 4000
+    
+  fast:
+    provider: openai
+    model: gpt-3.5-turbo
+    temperature: 0.1
+    max_tokens: 2000
+
+safety:
+  hitl:
+    enabled: true
+    auto_approve_timeout: 30
+    
+  critical_patterns:
+    - "sudo\\s+"
+    - "rm\\s+-rf"
+    - "chmod\\s+777"
+    - "curl.*\\|\\s*sh"
+    - "wget.*\\|\\s*bash"
+    - "format"
+    - "DELETE FROM"
+    - "DROP TABLE"
+    
+  auto_approve:
+    - "npm install"
+    - "pip install"
+    - "poetry install"
+    - "yarn install"
+    - "pnpm install"
+    - "git clone"
+    - "mkdir"
+    - "cd"
+    - "echo"
+    - "export"
+    - "source"
+
+execution:
+  parallel: true
+  max_workers: 4
+  timeout_per_step: 300
+  retry_failed: true
+  max_retries: 2
+
+reporting:
+  style: concise  # concise | detailed | verbose
+  max_length: 500
+  include_metrics: true
+  include_tips: true
+  save_to_file: true
+
+memory:
+  enable_cache: true
+  cache_ttl: 3600
+  persist_learnings: true
+  max_history: 100

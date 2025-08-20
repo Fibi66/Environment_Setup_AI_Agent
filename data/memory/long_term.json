@@ -1,0 +1,216 @@
+{
+  "scan_results": {
+    "value": {
+      "project_type": "cli",
+      "technology_stacks": [
+        {
+          "name": "Python",
+          "version": "3.9",
+          "type": "language",
+          "config_file": "C:\\workspace\\setup_agent\\pyproject.toml",
+          "confidence": 1.0
+        },
+        {
+          "name": "Poetry",
+          "version": "detected or recommended version",
+          "type": "tool",
+          "config_file": "C:\\workspace\\setup_agent\\pyproject.toml",
+          "confidence": 0.9
+        },
+        {
+          "name": "Click",
+          "version": "8.1.0",
+          "type": "framework",
+          "config_file": "C:\\workspace\\setup_agent\\pyproject.toml",
+          "confidence": 0.9
+        },
+        {
+          "name": "PyYAML",
+          "version": "6.0",
+          "type": "tool",
+          "config_file": "C:\\workspace\\setup_agent\\pyproject.toml",
+          "confidence": 0.9
+        },
+        {
+          "name": "pytest",
+          "version": "7.4.0",
+          "type": "tool",
+          "config_file": "C:\\workspace\\setup_agent\\pyproject.toml",
+          "confidence": 0.9
+        }
+      ],
+      "dependencies": {
+        "system": [],
+        "runtime": [
+          "langgraph>=0.0.20",
+          "langchain>=0.1.0",
+          "langchain-core>=0.1.0",
+          "click>=8.1.0",
+          "pyyaml>=6.0",
+          "aiofiles>=23.0.0",
+          "rich>=13.0.0",
+          "toml>=0.10.2",
+          "tomli>=2.0.1",
+          "asyncio>=3.4.3",
+          "gitpython>=3.1.0",
+          "psutil>=5.9.0",
+          "requests>=2.31.0",
+          "python-dotenv>=1.0.0"
+        ],
+        "development": [
+          "pytest>=7.4.0",
+          "pytest-asyncio>=0.21.0",
+          "pytest-cov>=4.1.0",
+          "black>=23.0.0",
+          "flake8>=6.0.0",
+          "mypy>=1.5.0"
+        ]
+      },
+      "entry_points": [
+        "C:\\workspace\\setup_agent\\src\\cli.py"
+      ],
+      "build_commands": [
+        "poetry install"
+      ],
+      "test_commands": [
+        "poetry run pytest"
+      ],
+      "special_requirements": [],
+      "complexity": "moderate"
+    },
+    "timestamp": "2025-08-20T11:20:24.221290"
+  },
+  "installation_plan": {
+    "value": {
+      "steps": [
+        {
+          "id": "install-cpp-compiler",
+          "phase": "system",
+          "name": "Install C++ Compiler",
+          "description": "Install a C++ compiler that supports C++11/14/17/20 standards",
+          "command": "winget install --id=Microsoft.VisualStudio.ComponentGroup.NativeDesktop.Core -e",
+          "working_directory": null,
+          "requires_sudo": false,
+          "can_parallel": true,
+          "dependencies": [],
+          "estimated_time_seconds": 120,
+          "rollback_command": null,
+          "success_indicators": [
+            "Successfully installed"
+          ],
+          "failure_indicators": [
+            "Error:"
+          ],
+          "requires_confirmation": false
+        },
+        {
+          "id": "install-cmake",
+          "phase": "project",
+          "name": "Install CMake",
+          "description": "Install the recommended version of CMake for the project",
+          "command": "winget install Kitware.CMake -e",
+          "working_directory": null,
+          "requires_sudo": false,
+          "can_parallel": false,
+          "dependencies": [
+            "install-cpp-compiler"
+          ],
+          "estimated_time_seconds": 60,
+          "rollback_command": "winget uninstall Kitware.CMake -e",
+          "success_indicators": [
+            "Successfully installed"
+          ],
+          "failure_indicators": [
+            "Error:"
+          ],
+          "requires_confirmation": false
+        },
+        {
+          "id": "install-git-bash",
+          "phase": "project",
+          "name": "Install Git Bash",
+          "description": "Install Git Bash to use bash scripts on Windows",
+          "command": "winget install --id=Git.Git -e",
+          "working_directory": null,
+          "requires_sudo": false,
+          "can_parallel": false,
+          "dependencies": [
+            "install-cpp-compiler"
+          ],
+          "estimated_time_seconds": 90,
+          "rollback_command": "winget uninstall Git.Git -e",
+          "success_indicators": [
+            "Successfully installed"
+          ],
+          "failure_indicators": [
+            "Error:"
+          ],
+          "requires_confirmation": false
+        },
+        {
+          "id": "configure-cmake",
+          "phase": "build",
+          "name": "Configure CMake",
+          "description": "Run CMake to configure the project",
+          "command": "cmake .",
+          "working_directory": "path to the project directory",
+          "requires_sudo": false,
+          "can_parallel": false,
+          "dependencies": [
+            "install-cmake"
+          ],
+          "estimated_time_seconds": 30,
+          "rollback_command": null,
+          "success_indicators": [
+            "Configuring done",
+            "Generating done"
+          ],
+          "failure_indicators": [
+            "CMake Error"
+          ],
+          "requires_confirmation": false
+        },
+        {
+          "id": "build-project",
+          "phase": "build",
+          "name": "Build the project",
+          "description": "Build the project using CMake-generated files",
+          "command": "cmake --build .",
+          "working_directory": "path to the project directory",
+          "requires_sudo": false,
+          "can_parallel": false,
+          "dependencies": [
+            "configure-cmake"
+          ],
+          "estimated_time_seconds": 60,
+          "rollback_command": "cmake --build . --target clean",
+          "success_indicators": [
+            "Build succeeded"
+          ],
+          "failure_indicators": [
+            "Build FAILED"
+          ],
+          "requires_confirmation": false
+        }
+      ],
+      "estimated_time": "6 minutes",
+      "parallel_groups": [
+        [
+          "install-cpp-compiler"
+        ]
+      ],
+      "critical_steps": [
+        "install-cpp-compiler",
+        "install-cmake",
+        "configure-cmake",
+        "build-project"
+      ],
+      "notes": [
+        "Ensure that Visual Studio Build Tools are installed for C++ compiler support.",
+        "CMake version installed should be compatible with the C++ standards used in the project.",
+        "Git Bash is required for running bash scripts on Windows."
+      ]
+    },
+    "timestamp": "2025-08-20T11:34:39.612410"
+  }
+}
