@@ -1,6 +1,8 @@
 from typing import Dict, Any, Optional
 from datetime import datetime
 from .base import BaseAgent
+from ..core.metrics import get_metrics, reset_metrics
+from ..core.errors import ErrorTracker
 
 
 class OrchestratorAgent(BaseAgent):
@@ -10,6 +12,19 @@ class OrchestratorAgent(BaseAgent):
     
     async def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         self.log("🎯 Starting orchestration...")
+        
+        # Initialize metrics and error tracking at the very beginning
+        reset_metrics()  # Reset any previous metrics
+        metrics = get_metrics()
+        project_path = state.get('project_path', '.')
+        metrics.start(project_path)  # Start timing from the very beginning
+        state['metrics'] = metrics
+        
+        # Initialize global error tracker
+        error_tracker = ErrorTracker()
+        state['error_tracker'] = error_tracker
+        
+        self.log("📊 Metrics tracking initialized")
         
         # Analyze initial request
         initial_analysis = await self._analyze_request(state)

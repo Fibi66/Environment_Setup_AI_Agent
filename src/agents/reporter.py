@@ -1,6 +1,9 @@
 from typing import Dict, Any
+import json
 from datetime import datetime
 from .base import BaseAgent
+from ..core.metrics import get_metrics
+from ..core.errors import ErrorTracker
 
 
 class ReporterAgent(BaseAgent):
@@ -35,6 +38,10 @@ class ReporterAgent(BaseAgent):
         return state
     
     def _collect_report_data(self, state: Dict) -> Dict:
+        # Get metrics and errors
+        metrics = state.get('metrics', get_metrics())
+        error_tracker = state.get('error_tracker', ErrorTracker())
+        
         # Extract key metrics
         steps = state.get('installation_plan', {}).get('steps', [])
         completed = state.get('completed_steps', [])
@@ -45,15 +52,27 @@ class ReporterAgent(BaseAgent):
         end_time = datetime.now()
         duration = (end_time - start_time).total_seconds()
         
+        # Get language-specific metrics
+        language_metrics = {}
+        for lang in state.get('detected_languages', []):
+            lang_metric = metrics.get_language_metrics(lang)
+            if lang_metric:
+                language_metrics[lang] = lang_metric.to_dict()
+        
         return {
             'project_type': state.get('project_type', 'unknown'),
             'detected_stacks': state.get('detected_stacks', []),
+            'detected_languages': state.get('detected_languages', []),
+            'completed_languages': state.get('completed_languages', []),
+            'failed_languages': state.get('failed_languages', []),
             'total_steps': len(steps),
             'completed_steps': len(completed),
             'failed_steps': len(failed),
-            'success_rate': state.get('success_rate', 0),
+            'success_rate': metrics.overall_success_rate,
             'health_score': state.get('health_score', 0),
-            'duration_seconds': duration,
+            'duration_seconds': metrics.duration or duration,
+            'language_metrics': language_metrics,
+            'error_summary': error_tracker.get_summary(),
             'verification_results': state.get('verification_results', []),
             'critical_failures': state.get('verification_analysis', {}).get('critical_failures', []),
             'warnings': state.get('verification_analysis', {}).get('warnings', []),
@@ -132,5 +151,19 @@ Use markdown formatting.
         # Save report with UTF-8 encoding
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(report)
+        
+        # Also export metrics as JSON
+        metrics = state.get('metrics', get_metrics())
+        metrics.complete()  # Mark the end of setup
+        metrics_file = metrics.export_json(f"{reports_dir}/metrics_{project_name}_{timestamp}.json")
+        self.log(f"📈 Metrics exported to: {metrics_file}")
+        
+        # Export error report if there are errors
+        error_tracker = state.get('error_tracker', ErrorTracker())
+        if error_tracker.errors:
+            error_file = f"{reports_dir}/errors_{project_name}_{timestamp}.json"
+            with open(error_file, 'w', encoding='utf-8') as f:
+                json.dump(error_tracker.to_list(), f, indent=2)
+            self.log(f"⚠️ Error report saved to: {error_file}")
         
         return filename

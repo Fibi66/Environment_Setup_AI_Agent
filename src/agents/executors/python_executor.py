@@ -1,17 +1,30 @@
 import asyncio
 import platform
 import os
+import time
 from typing import Dict, Any
 from pathlib import Path
 from ..base import BaseAgent
+from ...core.metrics import get_metrics
+from ...core.errors import SetupError, ErrorType, ErrorSeverity, ErrorTracker
 
 
 class PythonExecutor(BaseAgent):
     def __init__(self, config):
         super().__init__("PythonExecutor", "Python Environment Setup", config)
+        self.metrics = get_metrics()
+        self.error_tracker = ErrorTracker()
         
     async def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
         self.log("🐍 Setting up Python environment...")
+        
+        # Get metrics and error tracker from state
+        self.metrics = state.get('metrics', get_metrics())
+        self.error_tracker = state.get('error_tracker', ErrorTracker())
+        
+        # Start metrics tracking
+        lang_metrics = self.metrics.add_language('python')
+        lang_metrics.start()
         
         config = state.get('language_configs', {}).get('python', {})
         project_path = state.get('project_path', '.')
@@ -22,8 +35,17 @@ class PythonExecutor(BaseAgent):
             self.log("📦 Installing Python...")
             success = await self._install_python()
             if not success:
+                error = SetupError(
+                    error_type=ErrorType.INSTALLATION_FAILED,
+                    message="Failed to install Python",
+                    severity=ErrorSeverity.HIGH,
+                    agent="PythonExecutor",
+                    language="python"
+                )
+                self.error_tracker.add_error(error)
                 self.log("❌ Failed to install Python")
                 state['failed_languages'].append('python')
+                lang_metrics.complete(success=False)
                 return state
             python_cmd = await self._get_python_command()
         
@@ -58,6 +80,7 @@ class PythonExecutor(BaseAgent):
         
         # Mark as completed
         state['completed_languages'].append('python')
+        lang_metrics.complete(success=True)
         self.log("✅ Python environment setup complete")
         
         return state
@@ -102,6 +125,7 @@ class PythonExecutor(BaseAgent):
         
         for cmd in commands:
             self.log(f"  Running: {cmd[:50]}...")
+            cmd_start = time.time()
             try:
                 process = await asyncio.create_subprocess_shell(
                     cmd,
@@ -112,6 +136,7 @@ class PythonExecutor(BaseAgent):
                     process.communicate(),
                     timeout=300
                 )
+                cmd_duration = time.time() - cmd_start
                 
                 if process.returncode != 0:
                     self.log(f"  ⚠️ Command failed: {stderr.decode()[:200]}")

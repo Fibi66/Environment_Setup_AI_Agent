@@ -33,6 +33,19 @@ class ScannerAgent(BaseAgent):
             state['error'] = f"Sorry, we currently only support Node.js, Python, and Java. Detected {', '.join(unsupported)} is not yet supported."
             state['workflow_should_end'] = True
             state['detected_languages'] = []
+            
+            # Record error in tracker
+            if 'error_tracker' in state:
+                from ..core.errors import SetupError, ErrorType, ErrorSeverity
+                error = SetupError(
+                    error_type=ErrorType.UNSUPPORTED_LANGUAGE,
+                    message=state['error'],
+                    severity=ErrorSeverity.CRITICAL,
+                    agent="ScannerAgent",
+                    details={'unsupported_languages': list(unsupported)}
+                )
+                state['error_tracker'].add_error(error)
+            
             return state
         
         # Filter to only supported languages
