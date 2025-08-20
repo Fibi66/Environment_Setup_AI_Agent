@@ -32,9 +32,11 @@ export OPENAI_API_KEY=sk-...      # or ANTHROPIC_API_KEY=sk-ant-api...
 
 ### Running the Agent
 
-- python -m src.cli https://github.com/user/repo     # GitHub repository
-- python -m src.cli C:\path\to\project              # Local project
-- python -m src.cli .                               # Current directory
+```bash
+python -m src.cli https://github.com/user/repo     # GitHub repository
+python -m src.cli C:\path\to\project              # Local project
+python -m src.cli .                               # Current directory
+```
 
 
 ## Performance
@@ -43,28 +45,32 @@ export OPENAI_API_KEY=sk-...      # or ANTHROPIC_API_KEY=sk-ant-api...
 - Windows: 19/20 succeeded | Ubuntu: 19/20 succeeded  
 - Failed cases: 2 complex Java builds requiring manual configuration
 
-    ====== Supported Platforms ======
-        Windows 10/11 (Administrator required)
-        Ubuntu 18.04+ / Debian-based Linux
-        
-    ====== Tested Project Types ======
-        ✓ Python projects (Flask, Django, FastAPI)
-        ✓ Node.js projects (Express, React, Vue)  
-        ✓ Java projects (Spring Boot, Maven/Gradle)
-        ✓ Multi-language projects
+### Supported Platforms
+- **Windows 10/11** (Administrator required)
+- **Ubuntu 18.04+** / Debian-based Linux
 
-    ====== Setup Time Distribution ======
-        < 2 min: 30% of projects
-        2-5 min: 50% of projects
-        5-10 min: 20% of projects
-        
-**Agent Architecture**
+### Tested Project Types
+- ✅ **Python** - Flask, Django, FastAPI
+- ✅ **Node.js** - Express, React, Vue  
+- ✅ **Java** - Spring Boot, Maven/Gradle
+- ✅ **Multi-language** - Full-stack applications
 
-    Scanner → Analyzer → Planner → Language Executors (Loop) → Verifier → Reporter
-                                  ↑                    ↓
-                                  ←─────────────────────
+### Setup Time Distribution
+```
+< 2 min:  ████████████ 30%
+2-5 min:  ████████████████████ 50%
+5-10 min: ████████ 20%
+```
+        
+## Agent Architecture
+
+    Orchestrator → Scanner → Analyzer → Planner → Language Executors (Loop) → Verifier → Reporter
+         ↓                                      ↑                    ↓
+    [Metrics Init]                             ←─────────────────────
+**Execution Flow**: Planner sequentially calls each language executor (Java → Python → Node.js), with automatic retry and failure isolation. Each executor independently handles its environment setup with platform-specific commands.
     
-Multi-Agent System:
+**Multi-Agent System:**
+- **Orchestrator**: Initializes metrics & error tracking, coordinates workflow
 - **Scanner**: Detects Node.js/Python/Java (rejects unsupported languages)
 - **Analyzer**: Analyzes dependencies and compatibility
 - **Planner**: Routes to appropriate language executor, manages execution queue
@@ -73,6 +79,13 @@ Multi-Agent System:
   - **PythonExecutor**: Manages pip/venv, requirements.txt/Pipfile
   - **JavaExecutor**: Configures JDK, Maven/Gradle builds
 - **Verifier**: Validates all language environments
-- **Reporter**: Generates comprehensive setup report
+- **Reporter**: Generates setup report + exports metrics/errors
 
-**Execution Flow**: Planner sequentially calls each language executor (Java → Python → Node.js), with automatic retry and failure isolation. Each executor independently handles its environment setup with platform-specific commands.
+**Data Tracking:**
+- **Metrics**: Real-time performance tracking per language (success rate, duration, commands)
+- **Error Classification**: Categorized errors (NETWORK_ERROR, PERMISSION_DENIED, TIMEOUT, etc.)
+- **Output Files**:
+  - `reports/setup_[project]_[timestamp].md` - Human-readable report
+  - `metrics/setup_metrics_[timestamp].json` - Performance data
+  - `reports/errors_[project]_[timestamp].json` - Error details (if any)
+
