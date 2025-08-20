@@ -1,200 +1,157 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from .base import BaseAgent
-from ..core.safety import Action, ActionType
+from .executors import NodeExecutor, PythonExecutor, JavaExecutor
 
 
 class PlannerAgent(BaseAgent):
     def __init__(self, config):
-        super().__init__("Planner", "Installation Planning", config)
-    
-    async def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        self.log("📋 Creating installation plan...")
+        super().__init__("Planner", "Language Environment Router", config)
+        self.config = config
         
-        # Get analysis results
-        analysis = {
-            'scan_results': state.get('scan_results', {}),
-            'dependency_graph': state.get('dependency_graph', {}),
-            'installation_order': state.get('installation_order', []),
-            'compatibility_issues': state.get('compatibility_issues', []),
-            'system_info': self._get_system_info()
+        # Initialize all executors
+        self.executors = {
+            'nodejs': NodeExecutor(config),
+            'python': PythonExecutor(config),
+            'java': JavaExecutor(config)
         }
         
-        # Generate installation plan
-        prompt = self._build_planning_prompt(analysis)
-        plan = await self.think_json(prompt)
+        # Define execution order priority
+        self.language_priority = {
+            'java': 1,     # Java first (JDK needed by some tools)
+            'python': 2,   # Python second
+            'nodejs': 3    # Node.js last
+        }
+    
+    async def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        self.log("📋 Planning language environment setup...")
         
-        # Mark critical steps for HITL
-        plan = self._mark_critical_steps(plan)
+        detected_languages = state.get('detected_languages', [])
         
-        # Get user approval for the plan
-        approved_plan = await self._get_plan_approval(plan, state)
+        if not detected_languages:
+            self.log("⚠️ No languages to set up")
+            state['workflow_should_end'] = True
+            return state
         
-        # Update state
-        state['installation_plan'] = approved_plan
-        state['estimated_time'] = plan.get('estimated_time', 'unknown')
+        # Sort languages by priority
+        sorted_languages = sorted(
+            detected_languages,
+            key=lambda x: self.language_priority.get(x, 999)
+        )
         
-        self.memory.remember('installation_plan', approved_plan, persistent=True)
+        self.log(f"Setup order: {' → '.join(sorted_languages)}")
         
-        self.log(f"✅ Plan created with {len(approved_plan['steps'])} steps")
+        # Initialize execution tracking if not present
+        if 'execution_queue' not in state:
+            state['execution_queue'] = sorted_languages
+        if 'completed_languages' not in state:
+            state['completed_languages'] = []
+        if 'failed_languages' not in state:
+            state['failed_languages'] = []
+        
+        # Store the sorted order
+        state['execution_queue'] = sorted_languages
+        state['current_language_index'] = 0
+        
+        self.log(f"✅ Plan created for {len(sorted_languages)} language(s)")
         
         return state
     
-    def _get_system_info(self) -> Dict[str, Any]:
-        import platform
-        return {
-            'os': platform.system(),
-            'os_version': platform.version(),
-            'architecture': platform.machine(),
-            'python_version': platform.python_version()
-        }
-    
-    def _build_planning_prompt(self, analysis: Dict) -> str:
-        system_info = analysis.get('system_info', {})
-        os_type = system_info.get('os', 'Unknown')
+    async def execute_next_language(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute the next language in the queue"""
         
-        # OS-specific instructions
-        os_instructions = ""
-        if os_type == "Windows":
-            os_instructions = """
-- Use Windows-appropriate commands ONLY
-- For package installation use ONE of these in order of preference:
-  1. winget install <package> --accept-package-agreements --accept-source-agreements
-  2. choco install <package> -y (if Chocolatey is available)
-  3. Direct download via PowerShell: Invoke-WebRequest -Uri <url> -OutFile <file>
-- Do NOT use sudo, apt-get, yum, or other Linux commands
-- Do NOT use bash commands like ./build.sh on Windows
-- Use PowerShell or cmd commands only
-- For build scripts: use build.bat or build.ps1, NOT build.sh
-- Paths should use backslashes or be quoted
-- requires_sudo should always be false on Windows
-- Common Windows packages:
-  - C++ Compiler: winget install Microsoft.VisualStudio.2022.BuildTools
-  - CMake: winget install Kitware.CMake
-  - Git: winget install Git.Git
-  - Make: winget install GnuWin32.Make or use nmake from Visual Studio
-"""
-        elif os_type == "Darwin":  # macOS
-            os_instructions = """
-- Use macOS-appropriate commands (brew, port, or direct downloads)
-- Use sudo only when necessary
-- Consider using Homebrew for package management
-"""
-        else:  # Linux
-            os_instructions = """
-- Use Linux package managers (apt-get, yum, dnf, etc.)
-- Use sudo for system-level changes
-- Consider the specific Linux distribution
-"""
+        execution_queue = state.get('execution_queue', [])
+        completed = state.get('completed_languages', [])
+        failed = state.get('failed_languages', [])
+        current_index = state.get('current_language_index', 0)
         
-        return f"""
-Create a detailed installation plan based on the analysis.
-
-System: {os_type}
-Analysis Results:
-{analysis}
-
-Generate a JSON installation plan:
-{{
-  "steps": [
-    {{
-      "id": "step-id",
-      "phase": "system|runtime|project|build|test",
-      "name": "Step name",
-      "description": "What this step does",
-      "command": "exact command to run",
-      "working_directory": "path or null",
-      "requires_sudo": true/false,
-      "can_parallel": true/false,
-      "dependencies": ["list of step IDs this depends on"],
-      "estimated_time_seconds": 30,
-      "rollback_command": "command to undo this step or null",
-      "success_indicators": ["expected output patterns"],
-      "failure_indicators": ["error patterns to watch for"]
-    }}
-  ],
-  "estimated_time": "2 minutes",
-  "parallel_groups": [
-    ["step-ids that can run in parallel"]
-  ],
-  "critical_steps": ["step-ids that are critical"],
-  "notes": ["important notes for the user"]
-}}
-
-Important OS-Specific Requirements:
-{os_instructions}
-
-General Requirements:
-- Order steps correctly based on dependencies
-- Group parallel-safe operations
-- Include rollback commands where possible
-- Provide clear success/failure indicators
-- Optimize for speed while maintaining safety
-"""
-    
-    def _mark_critical_steps(self, plan: Dict) -> Dict:
-        # Mark steps that need HITL approval
-        for step in plan.get('steps', []):
-            command = step.get('command', '')
+        # Find next language to execute
+        remaining = [lang for lang in execution_queue if lang not in completed and lang not in failed]
+        
+        if not remaining:
+            self.log("✅ All language environments processed")
+            state['all_languages_processed'] = True
+            return state
+        
+        current_language = remaining[0]
+        self.log(f"\n🔄 Processing: {current_language}")
+        
+        # Get the appropriate executor
+        executor = self.executors.get(current_language)
+        
+        if not executor:
+            self.log(f"❌ No executor found for {current_language}")
+            state['failed_languages'].append(current_language)
+            return state
+        
+        # Execute the language setup
+        try:
+            state = await executor.process(state)
             
-            # Classify the action
-            action_type = self.safety.classify_action(command)
-            step['requires_confirmation'] = (action_type == ActionType.CRITICAL)
-            
-            # Add risk analysis
-            if step['requires_confirmation']:
-                step['risks'] = self.safety.analyze_risks(command)
-        
-        return plan
-    
-    async def _get_plan_approval(self, plan: Dict, state: Dict = None) -> Dict:
-        print("\n" + "="*60)
-        print("📋 INSTALLATION PLAN REVIEW")
-        print("="*60)
-        
-        # Show summary
-        steps = plan.get('steps', [])
-        print(f"\nTotal steps: {len(steps)}")
-        print(f"Estimated time: {plan.get('estimated_time', 'unknown')}")
-        
-        # Group by phase
-        phases = {}
-        for step in steps:
-            phase = step.get('phase', 'unknown')
-            if phase not in phases:
-                phases[phase] = []
-            phases[phase].append(step)
-        
-        # Display by phase
-        for phase, phase_steps in phases.items():
-            print(f"\n{phase.upper()} Phase ({len(phase_steps)} steps):")
-            for step in phase_steps:
-                marker = "⚠️ " if step.get('requires_confirmation') else "  "
-                print(f"{marker} • {step['name']}")
-                if step.get('requires_sudo'):
-                    print(f"      [sudo] {step['command'][:60]}...")
+            # Check if language failed
+            if current_language in state.get('failed_languages', []):
+                self.log(f"❌ {current_language} setup failed")
+                
+                # Decide whether to continue with other languages
+                if self._should_continue_after_failure(current_language, state):
+                    self.log("↳ Continuing with remaining languages...")
                 else:
-                    print(f"      {step['command'][:60]}...")
+                    self.log("↳ Stopping due to critical failure")
+                    state['workflow_should_end'] = True
+                    return state
+            
+        except Exception as e:
+            self.log(f"❌ Error executing {current_language}: {str(e)}")
+            state['failed_languages'].append(current_language)
+            
+            if not self._should_continue_after_failure(current_language, state):
+                state['workflow_should_end'] = True
+                return state
         
-        # Show critical steps warning
-        critical_count = sum(1 for s in steps if s.get('requires_confirmation'))
-        if critical_count > 0:
-            print(f"\n⚠️  {critical_count} steps require additional confirmation during execution")
+        # Update progress
+        state['current_language_index'] = current_index + 1
         
-        # Get approval
-        print("\nOptions:")
-        print("  [y] Approve and continue")
-        print("  [n] Cancel installation")
-        print("  [d] Show detailed plan")
+        # Check if more languages to process
+        remaining_after = [lang for lang in execution_queue 
+                          if lang not in state.get('completed_languages', []) 
+                          and lang not in state.get('failed_languages', [])]
         
-        response = input("\nYour choice [y/n/d]: ").lower().strip()
-        
-        if response == 'd':
-            # Show detailed plan
-            import json
-            print("\nDetailed Plan:")
-            print(json.dumps(plan, indent=2))
-            return await self._get_plan_approval(plan)
-        elif response == 'y':
-            return plan
+        if remaining_after:
+            self.log(f"📋 Remaining: {', '.join(remaining_after)}")
+            state['has_more_languages'] = True
         else:
-            raise KeyboardInterrupt("Installation cancelled by user")
+            self.log("✅ All languages processed")
+            state['all_languages_processed'] = True
+            state['has_more_languages'] = False
+        
+        return state
+    
+    def _should_continue_after_failure(self, failed_language: str, state: Dict[str, Any]) -> bool:
+        """Determine if we should continue after a language fails"""
+        
+        # If Java fails, it might affect other languages that need JVM
+        if failed_language == 'java':
+            remaining = state.get('execution_queue', [])
+            # Check if any remaining languages might need Java
+            if 'scala' in remaining or 'kotlin' in remaining:
+                return False
+        
+        # Generally continue with other languages
+        return True
+    
+    def get_summary(self, state: Dict[str, Any]) -> str:
+        """Get a summary of the execution results"""
+        completed = state.get('completed_languages', [])
+        failed = state.get('failed_languages', [])
+        
+        summary_parts = []
+        
+        if completed:
+            summary_parts.append(f"✅ Completed: {', '.join(completed)}")
+        
+        if failed:
+            summary_parts.append(f"❌ Failed: {', '.join(failed)}")
+        
+        if not completed and not failed:
+            summary_parts.append("No languages were processed")
+        
+        return " | ".join(summary_parts)

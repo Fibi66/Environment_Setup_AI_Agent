@@ -8,7 +8,6 @@ from ..agents import (
     ScannerAgent,
     AnalyzerAgent,
     PlannerAgent,
-    ExecutorAgent,
     VerifierAgent,
     ReporterAgent
 )
@@ -20,7 +19,6 @@ def create_workflow(config):
     scanner = ScannerAgent(config)
     analyzer = AnalyzerAgent(config)
     planner = PlannerAgent(config)
-    executor = ExecutorAgent(config)
     verifier = VerifierAgent(config)
     reporter = ReporterAgent(config)
     
@@ -32,43 +30,58 @@ def create_workflow(config):
     workflow.add_node("scan", scanner.process)
     workflow.add_node("analyze", analyzer.process)
     workflow.add_node("plan", planner.process)
-    workflow.add_node("execute", executor.process)
+    workflow.add_node("execute_language", planner.execute_next_language)  # Router + Executor
     workflow.add_node("verify", verifier.process)
     workflow.add_node("report", reporter.process)
     
     # Define edges
     workflow.set_entry_point("orchestrate")
     
-    # Conditional routing based on workflow path
+    # Conditional routing based on workflow state
     def route_after_orchestrate(state: State) -> str:
-        if state.get('workflow_path') == 'fast-track':
-            return "scan"
         return "scan"
     
     def route_after_scan(state: State) -> str:
-        if state.get('detected_stacks'):
+        # Check if workflow should end (unsupported languages)
+        if state.get('workflow_should_end'):
+            return "report"
+        
+        # Check if languages were detected
+        if state.get('detected_languages'):
             return "analyze"
-        return "report"  # Nothing to install
+        
+        return "report"  # No languages to install
     
     def route_after_analyze(state: State) -> str:
-        if state.get('compatibility_issues'):
-            # Critical issues might need user attention
-            critical = any(
-                issue['severity'] == 'critical' 
-                for issue in state['compatibility_issues']
-            )
-            if critical:
-                print("⚠️  Critical compatibility issues detected")
-        return "plan"
+        # Always go to planner if we have languages
+        if state.get('detected_languages'):
+            return "plan"
+        return "report"
     
     def route_after_plan(state: State) -> str:
-        if state.get('installation_plan'):
-            return "execute"
+        # Check if we have languages to execute
+        if state.get('execution_queue'):
+            return "execute_language"
         return "report"  # No plan created
     
     def route_after_execute(state: State) -> str:
-        if state.get('execution_results'):
-            return "verify"
+        # Check if all languages are processed
+        if state.get('all_languages_processed'):
+            # Go to verifier if at least one language succeeded
+            if state.get('completed_languages'):
+                return "verify"
+            else:
+                return "report"  # All failed, skip verification
+        
+        # Check if workflow should end (critical failure)
+        if state.get('workflow_should_end'):
+            return "report"
+        
+        # More languages to process - loop back
+        if state.get('has_more_languages'):
+            return "execute_language"
+        
+        # Default to report
         return "report"
     
     def route_after_verify(state: State) -> str:
@@ -90,19 +103,24 @@ def create_workflow(config):
     workflow.add_conditional_edges(
         "analyze",
         route_after_analyze,
-        {"plan": "plan"}
+        {"plan": "plan", "report": "report"}
     )
     
     workflow.add_conditional_edges(
         "plan",
         route_after_plan,
-        {"execute": "execute", "report": "report"}
+        {"execute_language": "execute_language", "report": "report"}
     )
     
+    # This is the key loop - execute_language can route back to itself
     workflow.add_conditional_edges(
-        "execute",
+        "execute_language",
         route_after_execute,
-        {"verify": "verify", "report": "report"}
+        {
+            "execute_language": "execute_language",  # Loop back for next language
+            "verify": "verify",
+            "report": "report"
+        }
     )
     
     workflow.add_conditional_edges(
